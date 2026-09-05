@@ -4,12 +4,14 @@
  * (see the Python project's data/task_sheet_transcription.md). Employees are invented
  * for testing. Everything here is editable in the app once it is running.
  */
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaClient } from "@prisma/client";
 import { csv } from "../src/lib/domain";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? "file:./prisma/dev.db";
-const prisma = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: DATABASE_URL }) });
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is not set - see .env.example.");
+}
+const prisma = new PrismaClient({ adapter: new PrismaNeon({ connectionString: process.env.DATABASE_URL }) });
 
 const M = "Morning";
 const E = "Evening";

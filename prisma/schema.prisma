@@ -1,13 +1,14 @@
 // Cleaning Roster Scheduler - data model.
-// Enums are modeled as validated strings (zod) rather than Prisma `enum`,
-// since the SQLite connector doesn't support native enums.
+// Enums are modeled as validated strings (zod) rather than Prisma `enum` - this schema
+// started on SQLite (no native enum support there) and it was simplest to keep the same
+// shape after moving to Postgres for deployment.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model Employee {

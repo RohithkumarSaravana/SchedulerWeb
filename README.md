@@ -9,7 +9,8 @@ PAO2, PAO3 on Wed/Sun) — rebuilt as a real app with a designed UI and a proper
 
 - **Next.js 16** (App Router, Turbopack, Server Actions) + **TypeScript**
 - **Tailwind CSS v4** with a custom design system (see below)
-- **Prisma 7** + **SQLite** (via the `better-sqlite3` driver adapter)
+- **Prisma 7** + **Postgres** (via the `@prisma/adapter-neon` driver adapter — HTTP-based,
+  built for serverless; works well on Vercel)
 - Radix UI primitives (dialog, select, tabs, checkbox, switch) restyled to match the design
 - `html-to-image` + `jsPDF` for client-side PNG/PDF export of rosters and the daily sheet
 
@@ -26,9 +27,12 @@ first on Wed/Sun) that mirrors the real shift, not a generic progress bar.
 
 ## Run it
 
+Needs a Postgres database — the free [Neon](https://neon.tech) tier works well, and is also
+available as a one-click integration from the Vercel dashboard's Storage tab.
+
 ```bash
 npm install
-cp .env.example .env   # or just: echo 'DATABASE_URL="file:./prisma/dev.db"' > .env
+cp .env.example .env   # then fill in DATABASE_URL with your Postgres connection string
 npx prisma generate
 npx prisma db push
 npx tsx prisma/seed.ts
@@ -36,7 +40,24 @@ npm run dev
 ```
 
 Opens at http://localhost:3000. The dummy dataset (32 employees, 52 tasks, ported from the
-Python prototype's seed) is loaded by `prisma/seed.ts` — rerun it any time to reset.
+Python prototype's seed) is loaded by `prisma/seed.ts` — it wipes and reseeds every time it's
+run, so it's always safe to rerun.
+
+## Deploying to Vercel
+
+1. Push this repo to GitHub.
+2. In Vercel: **Storage → Create Database → Postgres (Neon)** — this sets `DATABASE_URL` on
+   the project automatically. (Or bring your own Postgres and set `DATABASE_URL` yourself
+   under Project Settings → Environment Variables.)
+3. Import the GitHub repo as a new Vercel project — it auto-detects Next.js, no config needed.
+   `npm run build` will run `prisma generate` first via the `postinstall` script.
+4. Before or after the first deploy, run the schema push and seed **against the same
+   `DATABASE_URL`** from your machine:
+   ```bash
+   DATABASE_URL="<paste the Vercel/Neon connection string>" npx prisma db push
+   DATABASE_URL="<paste the Vercel/Neon connection string>" npx tsx prisma/seed.ts
+   ```
+   (Vercel doesn't run migrations automatically — this is a one-time step per environment.)
 
 ## Verify the scheduling engine
 
@@ -64,9 +85,9 @@ src/components/   ui/ (design-system primitives), layout/, employees/, tasks/,
 ## Notes
 
 - `src/lib/cleanroomRelay.ts` and `src/lib/scheduler.ts` import Prisma directly and must
-  never be imported from a `"use client"` component (pulls `better-sqlite3` native bindings
-  into the browser bundle). Shared display-only constants (`ROOM_ORDER`, `PHASE_ORDER`) live
-  in `src/lib/domain.ts` instead, which has no server dependencies.
+  never be imported from a `"use client"` component (pulls the Neon driver adapter and its
+  Node dependencies into the browser bundle). Shared display-only constants (`ROOM_ORDER`,
+  `PHASE_ORDER`) live in `src/lib/domain.ts` instead, which has no server dependencies.
 - Every data-driven page is `export const dynamic = "force-dynamic"` — this is a live admin
   tool, not a marketing site; nothing should be statically frozen at build time.
 - No login in this stage either (single shared-browser tool for supervisor + manager), same

@@ -17,7 +17,7 @@ export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as con
 export type Weekday = (typeof WEEKDAYS)[number];
 
 // Cleanroom relay display order - kept here (not in lib/cleanroomRelay.ts) because that
-// module pulls in Prisma/better-sqlite3, which must never end up in a client bundle.
+// module pulls in Prisma and its driver adapter, which must never end up in a client bundle.
 export const ROOM_ORDER: Record<string, number> = { PAO3: 0, CCRI: 1, PAO1: 2, PAO2: 3 };
 export const PHASE_ORDER: Record<string, number> = { Main: 0, "Vesta mop": 1, "Water mop": 2 };
 
