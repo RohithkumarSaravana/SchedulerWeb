@@ -1,0 +1,118 @@
+// Cleaning Roster Scheduler - data model.
+// Enums are modeled as validated strings (zod) rather than Prisma `enum`,
+// since the SQLite connector doesn't support native enums.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Employee {
+  id            Int     @id @default(autoincrement())
+  name          String
+  initials      String
+  shift         String // Morning | Evening | Night
+  doesGeneral   Boolean @default(true)
+  doesCleanroom Boolean @default(false)
+  active        Boolean @default(true)
+  machineCerts  String  @default("") // csv: Scrubber,Buffer,Auto-scrubber,Vacuum
+  skills        String  @default("") // csv, e.g. "Final-check"
+  notes         String  @default("")
+
+  trainedTasks      TaskTraining[]
+  weeklyAssignments WeeklyAssignment[]
+  leaves            LeaveRecord[]
+  coverageSubs      CoverageOverride[]         @relation("substitute")
+  relayAssignments  CleanroomRelayAssignment[]
+}
+
+model GeneralTask {
+  id              Int     @id @default(autoincrement())
+  name            String
+  shift           String
+  area            String  @default("")
+  estMinutes      Int     @default(20)
+  size            Int     @default(2) // 1 small .. 3 large
+  frequency       String  @default("Daily")
+  specificDays    String  @default("") // csv of Mon..Sun
+  requiredMachine String?
+  isExtra         Boolean @default(false) // night "extras", may change weekly
+  active          Boolean @default(true)
+  notes           String  @default("")
+
+  trainedBy         TaskTraining[]
+  weeklyAssignments WeeklyAssignment[]
+  coverageOverrides CoverageOverride[]
+}
+
+model TaskTraining {
+  employeeId Int
+  taskId     Int
+  employee   Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  task       GeneralTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, taskId])
+}
+
+model CleanroomRoom {
+  id         Int     @id @default(autoincrement())
+  name       String  @unique
+  activeDays String  @default("ALL") // "ALL" or "Wed,Sun"
+  active     Boolean @default(true)
+}
+
+model WeeklyAssignment {
+  id         Int      @id @default(autoincrement())
+  weekStart  DateTime // Monday, midnight UTC
+  taskId     Int
+  employeeId Int?
+  locked     Boolean  @default(false)
+
+  task     GeneralTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  employee Employee?   @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@unique([weekStart, taskId])
+}
+
+model LeaveRecord {
+  id         Int      @id @default(autoincrement())
+  employeeId Int
+  startDate  DateTime
+  endDate    DateTime
+  leaveType  String   @default("Planned") // Planned | Sick
+  note       String   @default("")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model CoverageOverride {
+  id                   Int      @id @default(autoincrement())
+  day                  DateTime
+  taskId               Int
+  originalEmployeeId   Int?
+  substituteEmployeeId Int?
+
+  task       GeneralTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  substitute Employee?   @relation("substitute", fields: [substituteEmployeeId], references: [id], onDelete: SetNull)
+
+  @@unique([day, taskId])
+}
+
+model CleanroomRelayAssignment {
+  id         Int      @id @default(autoincrement())
+  day        DateTime
+  room       String // CCRI | PAO1 | PAO2 | PAO3
+  phase      String // Main | Vesta mop | Water mop
+  role       String // Vacuum | Bins | Gowning+Sinks | ...
+  employeeId Int
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Setting {
+  key   String @id
+  value String
+}

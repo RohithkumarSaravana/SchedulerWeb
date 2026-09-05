@@ -1,69 +1,175 @@
-import Image from "next/image";
+import Link from "next/link";
+import { ArrowUpRight, TriangleAlert } from "lucide-react";
+import { RelayTimeline, type TimelineNode } from "@/components/relay-timeline";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { dateOnly, dayName, roomRunsOn } from "@/lib/domain";
+import { prisma } from "@/lib/prisma";
+import { effectiveGeneralAssignments } from "@/lib/scheduler";
 
-export default function Home() {
+// This page depends on "today" and live DB state - never prerender it statically.
+export const dynamic = "force-dynamic";
+
+export default async function OverviewPage() {
+  const today = dateOnly(new Date());
+  const dname = dayName(today);
+
+  const [employeeCount, taskCount, cleanroomPool, pao3, leavesToday, weeklyAssignmentsCount] = await Promise.all([
+    prisma.employee.count({ where: { active: true } }),
+    prisma.generalTask.count({ where: { active: true } }),
+    prisma.employee.count({ where: { active: true, doesCleanroom: true, shift: "Night" } }),
+    prisma.cleanroomRoom.findUnique({ where: { name: "PAO3" } }),
+    prisma.leaveRecord.findMany({
+      where: { startDate: { lte: today }, endDate: { gte: today } },
+      include: { employee: true },
+    }),
+    prisma.weeklyAssignment.count({
+      where: {
+        weekStart: new Date(today.getTime() - ((today.getUTCDay() + 6) % 7) * 86400000),
+      },
+    }),
+  ]);
+
+  const isSpecialDay = !!pao3 && roomRunsOn(pao3, dname);
+
+  const effective = await effectiveGeneralAssignments(today);
+  const unassignedToday = [...effective.values()].filter((v) => v == null).length;
+
+  const relayToday = await prisma.cleanroomRelayAssignment.findMany({ where: { day: today } });
+  const relayGenerated = relayToday.length > 0;
+
+  const nodes: TimelineNode[] = isSpecialDay
+    ? [
+        { time: "21:30", label: "Clock-in", sub: "PAO3 first tonight", tone: "start" },
+        { time: "—", label: "PAO3", sub: "Self-contained, full crew", tone: "room" },
+        { time: "→", label: "General cleaning", sub: "Rest of the shift", tone: "room" },
+        { time: "02:00", label: "Pre-step", sub: "Gowning bins + water", tone: "room" },
+        { time: "02:30", label: "CCRI", sub: "3 people, feeds PAO2", tone: "room" },
+        { time: "03:00", label: "PAO1 → PAO2", sub: "Relay + mop cascade", tone: "room" },
+        { time: "05:00", label: "Target finish", sub: "All rooms closed out", tone: "finish" },
+      ]
+    : [
+        { time: "21:30", label: "Clock-in", sub: "General cleaning starts", tone: "start" },
+        { time: "02:00", label: "Pre-step", sub: "Gowning bins + water", tone: "room" },
+        { time: "02:30", label: "CCRI", sub: "3 people, feeds PAO2", tone: "room" },
+        { time: "03:00", label: "PAO1 → PAO2", sub: "Relay + mop cascade", tone: "room" },
+        { time: "05:00", label: "Target finish", sub: "All rooms closed out", tone: "finish" },
+      ];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-soft">
+            {today.toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long", timeZone: "UTC" })}
           </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink">Tonight&rsquo;s relay</h1>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        <Button asChild>
+          <Link href="/daily">
+            Open Daily Schedule <ArrowUpRight />
+          </Link>
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader className="border-b-0 pb-0">
+          <div>
+            <CardTitle className="text-base">
+              {isSpecialDay ? "PAO3 night — 4 cleanrooms" : "Standard night — 3 cleanrooms"}
+            </CardTitle>
+            <p className="mt-1 text-[13px] text-ink-soft">
+              {relayGenerated
+                ? "Relay plan generated for today."
+                : "No relay plan generated yet — head to Daily Schedule."}
+            </p>
+          </div>
+          {!relayGenerated && <Badge variant="signal">Not generated</Badge>}
+        </CardHeader>
+        <CardContent>
+          <RelayTimeline nodes={nodes} />
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatTile label="Active employees" value={employeeCount} href="/employees" />
+        <StatTile label="General tasks" value={taskCount} href="/tasks" />
+        <StatTile label="Night cleanroom pool" value={cleanroomPool} href="/cleanroom" />
+        <StatTile
+          label="This week's roster"
+          value={weeklyAssignmentsCount}
+          hint={weeklyAssignmentsCount === 0 ? "Not generated" : `${weeklyAssignmentsCount} tasks assigned`}
+          href="/weekly-roster"
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Off today</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {leavesToday.length === 0 ? (
+              <p className="text-sm text-ink-soft">Nobody marked off.</p>
+            ) : (
+              leavesToday.map((lr) => (
+                <div key={lr.id} className="flex items-center justify-between text-sm">
+                  <span className="text-ink">
+                    {lr.employee.initials} &middot; {lr.employee.name}
+                  </span>
+                  <Badge variant={lr.leaveType === "Sick" ? "dirty" : "neutral"}>{lr.leaveType}</Badge>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Attention needed</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {unassignedToday === 0 && weeklyAssignmentsCount > 0 ? (
+              <p className="flex items-center gap-2 text-sm text-ok">Every task today has an owner.</p>
+            ) : weeklyAssignmentsCount === 0 ? (
+              <p className="flex items-center gap-2 text-sm text-ink-soft">
+                <TriangleAlert className="size-4 text-signal-ink dark:text-signal" />
+                Generate this week&rsquo;s roster to see coverage.
+              </p>
+            ) : (
+              <p className="flex items-center gap-2 text-sm text-danger">
+                <TriangleAlert className="size-4" />
+                {unassignedToday} task{unassignedToday === 1 ? "" : "s"} unassigned today.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  hint,
+  href,
+}: {
+  label: string;
+  value: number;
+  hint?: string;
+  href: string;
+}) {
+  return (
+    <Link href={href}>
+      <Card className="transition-colors hover:border-signal">
+        <CardContent className="p-4">
+          <p className="font-mono text-[11px] uppercase tracking-wider text-ink-soft">{label}</p>
+          <p className="mt-1 font-mono text-2xl font-semibold text-ink">{value}</p>
+          {hint && <p className="mt-0.5 text-[12px] text-ink-soft">{hint}</p>}
+        </CardContent>
+      </Card>
+    </Link>
   );
 }

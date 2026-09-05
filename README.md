@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Roster Control — Cleaning Roster Scheduler (Stage 2)
 
-## Getting Started
+A professional web build of the cleaning-contractor roster scheduler, replacing the Stage 1
+Python/Streamlit prototype (`../cleanroom`). Same scheduling logic — general weekly roster
+with workload balancing, same-day sick cover, and the nightly cleanroom relay (CCRI → PAO1 →
+PAO2, PAO3 on Wed/Sun) — rebuilt as a real app with a designed UI and a proper database.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router, Turbopack, Server Actions) + **TypeScript**
+- **Tailwind CSS v4** with a custom design system (see below)
+- **Prisma 7** + **SQLite** (via the `better-sqlite3` driver adapter)
+- Radix UI primitives (dialog, select, tabs, checkbox, switch) restyled to match the design
+- `html-to-image` + `jsPDF` for client-side PNG/PDF export of rosters and the daily sheet
+
+## Design
+
+"Facility control room" identity — a dark graphite sidebar (the control panel frame) around
+a light "readout" workspace, a single safety-yellow accent, and functional clean/dirty-side
+color semantics pulled from the client's own vocabulary. Typeface: IBM Plex Sans (UI/body) +
+IBM Plex Mono (data, timestamps, room/role codes). Full light/dark theme support.
+
+The signature element is the **Tonight's Relay** timeline on the Overview page — a timed
+node-path (21:30 clock-in → pre-step → CCRI → PAO1→PAO2 → target finish, with PAO3 inserted
+first on Wed/Sun) that mirrors the real shift, not a generic progress bar.
+
+## Run it
 
 ```bash
+npm install
+cp .env.example .env   # or just: echo 'DATABASE_URL="file:./prisma/dev.db"' > .env
+npx prisma generate
+npx prisma db push
+npx tsx prisma/seed.ts
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Opens at http://localhost:3000. The dummy dataset (32 employees, 52 tasks, ported from the
+Python prototype's seed) is loaded by `prisma/seed.ts` — rerun it any time to reset.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Verify the scheduling engine
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npx tsx scripts/verify.ts
+```
 
-## Learn More
+Port of the Python prototype's test suite — checks the TypeScript engine produces identical
+results (same headcounts, same workload balance, same relay structure) against the same seed
+data.
 
-To learn more about Next.js, take a look at the following resources:
+## Layout
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+prisma/           schema.prisma, seed.ts
+src/lib/          domain.ts, scheduler.ts, cleanroomRelay.ts   (engine, ported from Python)
+                   prisma.ts, export-client.ts, utils.ts
+src/app/actions/  Server Actions (CRUD, roster/relay generation, leave)
+src/app/*/page.tsx  one route per screen (Overview, Employees, General Tasks,
+                   Cleanroom Setup, Weekly Roster, Daily Schedule, Leave, Settings)
+src/components/   ui/ (design-system primitives), layout/, employees/, tasks/,
+                   cleanroom/, roster/, daily/, leave/, settings/, relay-timeline.tsx
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Notes
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/lib/cleanroomRelay.ts` and `src/lib/scheduler.ts` import Prisma directly and must
+  never be imported from a `"use client"` component (pulls `better-sqlite3` native bindings
+  into the browser bundle). Shared display-only constants (`ROOM_ORDER`, `PHASE_ORDER`) live
+  in `src/lib/domain.ts` instead, which has no server dependencies.
+- Every data-driven page is `export const dynamic = "force-dynamic"` — this is a live admin
+  tool, not a marketing site; nothing should be statically frozen at build time.
+- No login in this stage either (single shared-browser tool for supervisor + manager), same
+  as the Python prototype's Stage 1 decision.
